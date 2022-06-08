@@ -49,6 +49,17 @@ pkcs11_la_LIBADD = $(libp11_la_OBJECTS) $(OPENSSL_LIBS)
 pkcs11_la_LDFLAGS = $(AM_LDFLAGS) -module -shared -shrext $(SHARED_EXT) \
 	-avoid-version -export-symbols "$(srcdir)/pkcs11.exports"
 
+if ENABLE_PKCS11_PROVIDER
+lib_LTLIBRARIES += prov_pkcs11.la
+
+prov_pkcs11_la_SOURCES = provider.c provider_keymgmt.c provider.exports
+prov_pkcs11_la_CFLAGS = $(AM_CFLAGS) $(OPENSSL_EXTRA_CFLAGS) $(OPENSSL_CFLAGS)
+prov_pkcs11_la_LIBADD = $(libp11_la_OBJECTS) $(OPENSSL_LIBS)
+
+prov_pkcs11_la_LDFLAGS = $(AM_LDFLAGS) -module -shared -shrext $(SHARED_EXT) \
+	-avoid-version -export-symbols "$(srcdir)/provider.exports"
+endif
+
 # OpenSSL older than 1.1.0 expected libpkcs11.so instead of pkcs11.so
 check-local: $(LTLIBRARIES)
 	cd .libs && $(LN_S) -f pkcs11$(SHARED_EXT) libpkcs11$(SHARED_EXT)

@@ -152,6 +152,13 @@ AC_ARG_WITH(
 	[pkcs11_module="${withval}"],
 	[pkcs11_module="`$PKG_CONFIG --variable=proxy_module --silence-errors p11-kit-1`"])
 
+AC_ARG_ENABLE(
+	[pkcs11-provider],
+	[AS_HELP_STRING([--enable-pkcs11-provider], [OpenSSL PKCS11 provider])],
+	,
+	[enable_pkcs11_provider="no"]
+)
+
 dnl Checks for programs.
 AC_PROG_CPP
 AC_PROG_INSTALL
@@ -232,6 +239,8 @@ AC_SUBST([SHARED_EXT], $(eval echo "${shrext_cmds}"))
 AM_CONDITIONAL([WIN32], [test "${WIN32}" = "yes"])
 AM_CONDITIONAL([CYGWIN], [test "${CYGWIN}" = "yes"])
 AM_CONDITIONAL([ENABLE_API_DOC], [test "${enable_api_doc}" = "yes"])
+
+AM_CONDITIONAL([ENABLE_PKCS11_PROVIDER], [test "${enable_pkcs11_provider}" = "yes"])
 
 if test "${enable_pedantic}" = "yes"; then
 	enable_strict="yes";
