@@ -20,6 +20,7 @@ typedef struct st_provider_ctx PROVIDER_CTX;
 #define UNUSED  __attribute__((unused))
 
 #define P11PROV_PKCS11_MODULE_PATH "pkcs11-module-path"
+#define P11PROV_PKCS11_MODULE_INIT_ARGS "pkcs11-module-init-args"
 
 #define P11PROV_DEFAULT_PROPERTIES "provider=pkcs11"
 #define P11PROV_NAMES_RSA "RSA:rsaEncryption:1.2.840.113549.1.1.1"

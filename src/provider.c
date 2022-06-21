@@ -12,7 +12,7 @@ struct st_provider_ctx {
     /* Configuration */
     BUF_MEM pin;
     const char *module;
-    /* const char *init_args; */
+    const char *init_args;
 
     /* Current operations */
     PKCS11_CTX *pkcs11_ctx;
@@ -129,7 +129,7 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
                        void **provctx)
 {
     const OSSL_DISPATCH *iter_in;
-    OSSL_PARAM core_params[2] = { 0 };
+    OSSL_PARAM core_params[3] = { 0 };
     PROVIDER_CTX *ctx;
     int ret;
 
@@ -164,7 +164,11 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
                         P11PROV_PKCS11_MODULE_PATH,
                         (char **)&ctx->module,
                         sizeof(ctx->module));
-    core_params[1] = OSSL_PARAM_construct_end();
+    core_params[1] = OSSL_PARAM_construct_utf8_ptr(
+                        P11PROV_PKCS11_MODULE_INIT_ARGS,
+                        (char **)&ctx->init_args,
+                        sizeof(ctx->init_args));
+    core_params[2] = OSSL_PARAM_construct_end();
     ret = c_get_params(handle, core_params);
     if (ret == 0) {
         ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_GET_PARAMETER);
