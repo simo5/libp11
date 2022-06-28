@@ -123,6 +123,37 @@ static const OSSL_DISPATCH p11prov_dispatch_table[] = {
     { 0, NULL }
 };
 
+static int p11prov_module_init(PROVIDER_CTX *ctx)
+{
+    PKCS11_CTX *pkcs11_ctx;
+
+    if (ctx->pkcs11_ctx && ctx->slot_list) {
+	return 0;
+    }
+
+    fprintf(stderr, "PKCS#11: Initializing the module: %s\n", ctx->module);
+
+    pkcs11_ctx = PKCS11_CTX_new();
+    PKCS11_CTX_init_args(pkcs11_ctx, ctx->init_args);
+    /* PKCS11_set_ui_method(pkcs11_ctx, ctx->ui_method, ctx->callback_data); */
+    if (PKCS11_CTX_load(pkcs11_ctx, ctx->module) < 0) {
+	fprintf(stderr, "Unable to load module %s\n", ctx->module);
+	PKCS11_CTX_free(pkcs11_ctx);
+	return -1;
+    }
+
+    /* get slots */
+    if (PKCS11_update_slots(pkcs11_ctx, &ctx->slot_list, &ctx->slot_count) < 0 || ctx->slot_count == 0) {
+	fprintf(stderr, "Failed to enumerate slots\n");
+        PKCS11_CTX_unload(pkcs11_ctx);
+        PKCS11_CTX_free(pkcs11_ctx);
+	return -1;
+    }
+
+    ctx->pkcs11_ctx = pkcs11_ctx;
+    return 0;
+}
+
 int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
                        const OSSL_DISPATCH *in,
                        const OSSL_DISPATCH **out,
@@ -172,6 +203,13 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
     ret = c_get_params(handle, core_params);
     if (ret == 0) {
         ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_GET_PARAMETER);
+        provider_ctx_free(ctx);
+        return 0;
+    }
+
+    ret = p11prov_module_init(ctx);
+    if (ret != 0) {
+        ERR_raise(ERR_LIB_PROV, PROV_R_IN_ERROR_STATE);
         provider_ctx_free(ctx);
         return 0;
     }
