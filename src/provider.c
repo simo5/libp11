@@ -2,24 +2,6 @@
 
 #include "provider.h"
 
-struct st_provider_ctx {
-    pthread_mutex_t lock;
-
-    /* Provider handles */
-    const OSSL_CORE_HANDLE *handle;
-    OSSL_LIB_CTX *libctx;
-
-    /* Configuration */
-    BUF_MEM pin;
-    const char *module;
-    const char *init_args;
-
-    /* Current operations */
-    PKCS11_CTX *pkcs11_ctx;
-    PKCS11_SLOT *slot_list;
-    unsigned int slot_count;
-};
-
 static void provider_ctx_free(PROVIDER_CTX *ctx)
 {
     OSSL_LIB_CTX_free(ctx->libctx);
@@ -88,6 +70,12 @@ static const OSSL_ALGORITHM p11prov_keymgmt[] = {
     { NULL, NULL, NULL, NULL }
 };
 
+static const OSSL_ALGORITHM p11prov_object_stores[] = {
+    { "pkcs11", P11PROV_DEFAULT_PROPERTIES,
+      p11prov_object_store_functions, P11PROV_DESCS_URI, },
+    { NULL, NULL, NULL, NULL }
+};
+
 static const OSSL_ALGORITHM *p11prov_query_operation(void *provctx,
                                                      int operation_id,
                                                      int *no_cache)
@@ -96,6 +84,8 @@ static const OSSL_ALGORITHM *p11prov_query_operation(void *provctx,
     switch (operation_id) {
     case OSSL_OP_KEYMGMT:
         return p11prov_keymgmt;
+    case OSSL_OP_STORE:
+        return p11prov_object_stores;
     }
     return NULL;
 }

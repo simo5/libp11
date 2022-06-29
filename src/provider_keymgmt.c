@@ -33,7 +33,7 @@ static void *rsa_new(void *provctx)
 {
     fprintf(stderr, "new\n");
     fflush(stderr);
-    return (void *)0xdeadbeaf;
+    return NULL;
 }
 
 static void *rsa_gen_init(void *provctx, int selection,
@@ -41,14 +41,14 @@ static void *rsa_gen_init(void *provctx, int selection,
 {
     fprintf(stderr, "gen_init\n");
     fflush(stderr);
-    return (void *)0xdeadbeaf;
+    return NULL;
 }
 
 static void *rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
 {
     fprintf(stderr, "gen %p %p %p\n", genctx, osslcb, cbarg);
     fflush(stderr);
-    return (void *)0xdeadbeaf;
+    return NULL;
 }
 static void rsa_gen_cleanup(void *genctx)
 {
@@ -60,15 +60,25 @@ static void rsa_free(void *key)
 {
     fprintf(stderr, "free %p\n", key);
     fflush(stderr);
-    if (key == NULL) return;
-    if (key != (void *)0xdeadbeaf) abort();
+    p11prov_object_free((P11PROV_OBJECT *)key);
 }
 
 static void *rsa_load(const void *reference, size_t reference_sz)
 {
+    P11PROV_OBJECT *obj = NULL;
+
     fprintf(stderr, "load %p, %ld\n", reference, reference_sz);
     fflush(stderr);
-    return NULL;
+
+    if (!reference || reference_sz != sizeof(obj))
+        return NULL;
+
+    /* the contents of the reference is the address to our object */
+    obj = *(P11PROV_OBJECT **)reference;
+    /* we grabbed it, so we detach it */
+    *(P11PROV_OBJECT **)reference = NULL;
+
+    return obj;
 }
 
 static int rsa_has(const void *keydata, int selection)

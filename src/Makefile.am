@@ -52,7 +52,7 @@ pkcs11_la_LDFLAGS = $(AM_LDFLAGS) -module -shared -shrext $(SHARED_EXT) \
 if ENABLE_PKCS11_PROVIDER
 lib_LTLIBRARIES += prov_pkcs11.la
 
-prov_pkcs11_la_SOURCES = provider.c provider_keymgmt.c provider.exports
+prov_pkcs11_la_SOURCES = provider.c provider_keymgmt.c provider_store.c provider.exports
 prov_pkcs11_la_CFLAGS = $(AM_CFLAGS) $(OPENSSL_EXTRA_CFLAGS) $(OPENSSL_CFLAGS)
 prov_pkcs11_la_LIBADD = $(libp11_la_OBJECTS) $(OPENSSL_LIBS)
 
