@@ -5,8 +5,16 @@
 static void provider_ctx_free(PROVIDER_CTX *ctx)
 {
     OSSL_LIB_CTX_free(ctx->libctx);
+    if (ctx->pkcs11_ctx) {
+        if (ctx->slot_list) {
+            PKCS11_release_all_slots(ctx->pkcs11_ctx, ctx->slot_list,
+                                     ctx->slot_count);
+        }
+        PKCS11_CTX_unload(ctx->pkcs11_ctx);
+        PKCS11_CTX_free(ctx->pkcs11_ctx);
+    }
     pthread_mutex_destroy(&ctx->lock);
-    OPENSSL_free(ctx);
+    OPENSSL_clear_free(ctx, sizeof(PROVIDER_CTX));
 }
 
 static OSSL_FUNC_core_get_params_fn *c_get_params = NULL;
@@ -172,7 +180,7 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
     }
     ctx->handle = handle;
 
-    ctx->libctx = OSSL_LIB_CTX_new();
+    ctx->libctx = OSSL_LIB_CTX_new_from_dispatch(handle, in);
     if (ctx->libctx == NULL) {
         OPENSSL_free(ctx);
         return 0;

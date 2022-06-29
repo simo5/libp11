@@ -61,11 +61,17 @@ void p11prov_object_free(P11PROV_OBJECT *obj)
     OPENSSL_clear_free(obj, sizeof(P11PROV_OBJECT));
 }
 
+PKCS11_KEY *p11prov_object_key(P11PROV_OBJECT *obj)
+{
+    return obj->key;
+}
+
 static OSSL_FUNC_store_open_fn p11prov_object_open;
 static OSSL_FUNC_store_attach_fn p11prov_object_attach;
 static OSSL_FUNC_store_load_fn p11prov_object_load;
 static OSSL_FUNC_store_eof_fn p11prov_object_eof;
 static OSSL_FUNC_store_close_fn p11prov_object_close;
+static OSSL_FUNC_store_export_object_fn p11prov_object_export;
 
 static int hex_to_byte(const char *in, unsigned char *byte)
 {
@@ -565,13 +571,26 @@ static int p11prov_object_load(void *ctx,
     if (obj->key) {
         OSSL_PARAM params[4];
         int object_type = OSSL_OBJECT_PKEY;
-        const char *keytype = OBJ_nid2sn(PKCS11_get_key_type(obj->key));
+        int key_type = PKCS11_get_key_type(obj->key);
+        char *type;
 
         params[0] = OSSL_PARAM_construct_int(
                         OSSL_OBJECT_PARAM_TYPE, &object_type);
 
+        /* we only support RSA so far */
+        switch (key_type) {
+        case EVP_PKEY_RSA:
+            /* we have to handle private keys as our own type,
+             * while we can let openssl import public keys and
+             * deal with them in the default provider */
+            if (obj->key->isPrivate) type = P11PROV_NAMES_RSA;
+            else type = "RSA";
+            break;
+        default:
+            return 0;
+        }
         params[1] = OSSL_PARAM_construct_utf8_string(
-                        OSSL_OBJECT_PARAM_DATA_TYPE, (char *)keytype, 0);
+                        OSSL_OBJECT_PARAM_DATA_TYPE, type, 0);
 
         /* giving away the object by reference */
         obj->ref++;
@@ -607,12 +626,91 @@ static int p11prov_object_close(void *ctx)
     return 1;
 }
 
+static int p11prov_set_ctx_params(void *loaderctx, const OSSL_PARAM params[])
+{
+    fprintf(stderr, "set ctx params (%p, %p)\n", loaderctx, params);
+    fflush(stderr);
+
+    return 1;
+}
+
+int p11prov_object_export_public(P11PROV_OBJECT *obj,
+                                 OSSL_CALLBACK *cb_fn, void *cb_arg)
+{
+    /* ugly libp11 stuff that goes through a legacy EVP_PKEY,
+     * forcing 4 alloc/free for each parameter passing... */
+    OSSL_PARAM params[3];
+    EVP_PKEY *pkey;
+    BIGNUM *n = NULL, *e = NULL;
+    unsigned char n_data[2048], e_data[2048];
+    size_t n_size, e_size;
+    int ret = 0;
+
+    pkey = PKCS11_get_public_key(obj->key);
+    if (pkey == NULL) return 0;
+
+    ret = EVP_PKEY_get_bn_param(pkey, OSSL_PKEY_PARAM_RSA_N, &n);
+    if (ret == 0) goto done;
+    n_size = (size_t)BN_num_bytes(n);
+    ret = BN_bn2nativepad(n, n_data, n_size);
+    if (ret < 0) {
+        ret = 0;
+        goto done;
+    }
+
+    ret = EVP_PKEY_get_bn_param(pkey, OSSL_PKEY_PARAM_RSA_E, &e);
+    if (ret == 0) goto done;
+    e_size = (size_t)BN_num_bytes(e);
+    ret = BN_bn2nativepad(e, e_data, e_size);
+    if (ret < 0) {
+        ret = 0;
+        goto done;
+    }
+
+    params[0] = OSSL_PARAM_construct_BN(OSSL_PKEY_PARAM_RSA_N,
+                                        n_data, n_size);
+    params[1] = OSSL_PARAM_construct_BN(OSSL_PKEY_PARAM_RSA_E,
+                                        e_data, e_size);
+    params[2] = OSSL_PARAM_construct_end();
+
+    ret = cb_fn(params, cb_arg);
+
+done:
+    BN_free(n);
+    BN_free(e);
+
+    return ret;
+}
+
+static int p11prov_object_export(void *loaderctx, const void *reference,
+                                 size_t reference_sz, OSSL_CALLBACK *cb_fn,
+                                 void *cb_arg)
+{
+    P11PROV_OBJECT *obj = NULL;
+
+    fprintf(stderr, "object export %p, %ld\n", reference, reference_sz);
+    fflush(stderr);
+
+    if (!reference || reference_sz != sizeof(obj))
+        return 0;
+
+    /* the contents of the reference is the address to our object */
+    obj = *(P11PROV_OBJECT **)reference;
+    /* we grabbed it, so we detach it */
+    *(P11PROV_OBJECT **)reference = NULL;
+
+    /* we can only export public bits, so that's all we do */
+    return p11prov_object_export_public(obj, cb_fn, cb_arg);
+}
+
 const OSSL_DISPATCH p11prov_object_store_functions[] = {
     { OSSL_FUNC_STORE_OPEN, (void(*)(void))p11prov_object_open },
     { OSSL_FUNC_STORE_ATTACH, (void(*)(void))p11prov_object_attach },
     { OSSL_FUNC_STORE_LOAD, (void(*)(void))p11prov_object_load },
     { OSSL_FUNC_STORE_EOF, (void(*)(void))p11prov_object_eof },
     { OSSL_FUNC_STORE_CLOSE, (void(*)(void))p11prov_object_close },
+    { OSSL_FUNC_STORE_SET_CTX_PARAMS, (void(*)(void))p11prov_set_ctx_params },
+    { OSSL_FUNC_STORE_EXPORT_OBJECT, (void(*)(void))p11prov_object_export },
     { 0, NULL }
 };
 

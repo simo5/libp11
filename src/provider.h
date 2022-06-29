@@ -23,7 +23,7 @@
 #define P11PROV_PKCS11_MODULE_INIT_ARGS "pkcs11-module-init-args"
 
 #define P11PROV_DEFAULT_PROPERTIES "provider=pkcs11"
-#define P11PROV_NAMES_RSA "RSA:rsaEncryption:1.2.840.113549.1.1.1"
+#define P11PROV_NAMES_RSA "PKCS11-RSA"
 #define P11PROV_DESCS_RSA "PKCS11 RSA Implementation"
 #define P11PROV_DESCS_URI "PKCS11 URI Store"
 
@@ -53,6 +53,9 @@ extern const OSSL_DISPATCH p11prov_rsa_keymgmt_functions[];
 typedef struct p11prov_object P11PROV_OBJECT;
 
 void p11prov_object_free(P11PROV_OBJECT *obj);
+PKCS11_KEY *p11prov_object_key(P11PROV_OBJECT *obj);
+int p11prov_object_export_public(P11PROV_OBJECT *obj,
+                                 OSSL_CALLBACK *cb_fn, void *cb_arg);
 
 extern const OSSL_DISPATCH p11prov_object_store_functions[];
 
