@@ -16,35 +16,30 @@ static OSSL_FUNC_keymgmt_export_types_fn p11prov_rsa_export_types;
 
 static void *p11prov_rsa_new(void *provctx)
 {
-    fprintf(stderr, "new\n");
-    fflush(stderr);
+    p11prov_debug("new\n");
     return NULL;
 }
 
 static void *p11prov_rsa_gen_init(void *provctx, int selection,
                           const OSSL_PARAM params[])
 {
-    fprintf(stderr, "gen_init\n");
-    fflush(stderr);
+    p11prov_debug("gen_init\n");
     return NULL;
 }
 
 static void *p11prov_rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
 {
-    fprintf(stderr, "gen %p %p %p\n", genctx, osslcb, cbarg);
-    fflush(stderr);
+    p11prov_debug("gen %p %p %p\n", genctx, osslcb, cbarg);
     return NULL;
 }
 static void p11prov_rsa_gen_cleanup(void *genctx)
 {
-    fprintf(stderr, "gen_cleanup %p\n", genctx);
-    fflush(stderr);
+    p11prov_debug("gen_cleanup %p\n", genctx);
 }
 
 static void p11prov_rsa_free(void *key)
 {
-    fprintf(stderr, "free %p\n", key);
-    fflush(stderr);
+    p11prov_debug("free %p\n", key);
     p11prov_object_free((P11PROV_OBJECT *)key);
 }
 
@@ -52,8 +47,7 @@ static void *p11prov_rsa_load(const void *reference, size_t reference_sz)
 {
     P11PROV_OBJECT *obj = NULL;
 
-    fprintf(stderr, "load %p, %ld\n", reference, reference_sz);
-    fflush(stderr);
+    p11prov_debug("load %p, %ld\n", reference, reference_sz);
 
     if (!reference || reference_sz != sizeof(obj))
         return NULL;
@@ -72,8 +66,7 @@ static int p11prov_rsa_has(const void *keydata, int selection)
     PKCS11_KEY *key = NULL;
     int ok = 1;
 
-    fprintf(stderr, "has %p %d\n", obj, selection);
-    fflush(stderr);
+    p11prov_debug("has %p %d\n", obj, selection);
 
     if (obj == NULL) return 0;
     key = p11prov_object_key(obj);
@@ -90,8 +83,7 @@ static int p11prov_rsa_has(const void *keydata, int selection)
 static int p11prov_rsa_import(void *keydata, int selection,
                               const OSSL_PARAM params[])
 {
-    fprintf(stderr, "import %p\n", keydata);
-    fflush(stderr);
+    p11prov_debug("import %p\n", keydata);
     return 0;
 }
 
@@ -100,8 +92,7 @@ static int p11prov_rsa_export(void *keydata, int selection,
 {
     P11PROV_OBJECT *obj = (P11PROV_OBJECT *)keydata;
 
-    fprintf(stderr, "export %p\n", keydata);
-    fflush(stderr);
+    p11prov_debug("export %p\n", keydata);
 
     if (obj == NULL) return 0;
 
@@ -120,8 +111,7 @@ static const OSSL_PARAM p11prov_rsa_key_types[] = {
 
 static const OSSL_PARAM *p11prov_rsa_import_types(int selection)
 {
-    fprintf(stderr, "import types\n");
-    fflush(stderr);
+    p11prov_debug("import types\n");
     if (selection & OSSL_KEYMGMT_SELECT_PUBLIC_KEY)
         return p11prov_rsa_key_types;
     return NULL;
@@ -129,8 +119,7 @@ static const OSSL_PARAM *p11prov_rsa_import_types(int selection)
 
 static const OSSL_PARAM *p11prov_rsa_export_types(int selection)
 {
-    fprintf(stderr, "export types\n");
-    fflush(stderr);
+    p11prov_debug("export types\n");
     if (selection & OSSL_KEYMGMT_SELECT_PUBLIC_KEY)
         return p11prov_rsa_key_types;
     return NULL;

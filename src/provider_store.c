@@ -47,8 +47,7 @@ static void p11prov_uri_free(struct p11prov_uri *parsed_uri)
 
 void p11prov_object_free(P11PROV_OBJECT *obj)
 {
-    fprintf(stderr, "object free (%p)\n", obj);
-    fflush(stderr);
+    p11prov_debug("object free (%p)\n", obj);
 
     if (obj == NULL) return;
 
@@ -167,15 +166,13 @@ static int get_pin(const char *str, size_t len,
 
     fp = BIO_new_file(filename, "r");
     if (fp == NULL) {
-        fprintf(stderr, "Failed to get pin from %s\n", filename);
-        fflush(stderr);
+        p11prov_debug("Failed to get pin from %s\n", filename);
         ret = ENOENT;
         goto done;
     }
     ret = BIO_gets(fp, pin, MAX_PIN_LENGTH);
     if (ret <= 0) {
-        fprintf(stderr, "Failed to get pin from %s (%d)\n", filename, ret);
-        fflush(stderr);
+        p11prov_debug("Failed to get pin from %s (%d)\n", filename, ret);
         ret = EINVAL;
         BIO_free(fp);
         goto done;
@@ -267,14 +264,12 @@ static int parse_uri(struct p11prov_uri *u, const char *uri)
             } else if (len == 7 && strncmp(p, "private", 7) == 0) {
                 u->type = P11PROV_URI_PRIVATE_KEY;
             } else {
-                fprintf(stderr, "Unknown object type\n");
-                fflush(stderr);
+                p11prov_debug("Unknown object type\n");
                 ret = EINVAL;
                 goto done;
             }
         } else {
-            fprintf(stderr, "Ignoring unkown pkcs11 URI attribute\n");
-            fflush(stderr);
+            p11prov_debug("Ignoring unkown pkcs11 URI attribute\n");
         }
 
         if (ptr) {
@@ -300,8 +295,7 @@ static void *p11prov_object_open(void *provctx, const char *uri)
     P11PROV_OBJECT *obj;
     int ret;
 
-    fprintf(stderr, "object open (%p, %s)\n", ctx, uri);
-    fflush(stderr);
+    p11prov_debug("object open (%p, %s)\n", ctx, uri);
 
     obj = OPENSSL_zalloc(sizeof(P11PROV_OBJECT));
     if (obj == NULL) return NULL;
@@ -327,8 +321,7 @@ static void *p11prov_object_attach(void *provctx, OSSL_CORE_BIO *in)
 {
     PROVIDER_CTX *ctx = (PROVIDER_CTX *)provctx;
 
-    fprintf(stderr, "object attach (%p, %p)\n", ctx, in);
-    fflush(stderr);
+    p11prov_debug("object attach (%p, %p)\n", ctx, in);
 
     return NULL;
 }
@@ -378,8 +371,7 @@ static PKCS11_CERT *find_cert(PKCS11_SLOT *slot, PKCS11_CERT *prev,
 
     ret = PKCS11_enumerate_certs(&tmp, &certs, &n);
     if (ret != 0) {
-        fprintf(stderr, "Failed to enumerate certs\n");
-        fflush(stderr);
+        p11prov_debug("Failed to enumerate certs\n");
         return prev;
     }
     /* no certs on slot */
@@ -450,8 +442,7 @@ static PKCS11_KEY *find_key(PKCS11_SLOT *slot, bool private,
     }
 
     if (ret != 0) {
-        fprintf(stderr, "Failed to enumerate keys\n");
-        fflush(stderr);
+        p11prov_debug("Failed to enumerate keys\n");
         return NULL;
     }
     /* no keys on slot */
@@ -511,8 +502,7 @@ static int p11prov_object_load(void *ctx,
 {
     P11PROV_OBJECT *obj = (P11PROV_OBJECT *)ctx;
 
-    fprintf(stderr, "object load (%p)\n", obj);
-    fflush(stderr);
+    p11prov_debug("object load (%p)\n", obj);
 
     for (int i = 0; i < obj->provctx->slot_count; i++) {
 	PKCS11_SLOT *slot = &obj->provctx->slot_list[i];
@@ -607,8 +597,7 @@ static int p11prov_object_eof(void *ctx)
 {
     P11PROV_OBJECT *obj = (P11PROV_OBJECT *)ctx;
 
-    fprintf(stderr, "object eof (%p)\n", obj);
-    fflush(stderr);
+    p11prov_debug("object eof (%p)\n", obj);
 
     return obj->loaded?1:0;
 }
@@ -617,8 +606,7 @@ static int p11prov_object_close(void *ctx)
 {
     P11PROV_OBJECT *obj = (P11PROV_OBJECT *)ctx;
 
-    fprintf(stderr, "object close (%p)\n", obj);
-    fflush(stderr);
+    p11prov_debug("object close (%p)\n", obj);
 
     if (obj == NULL) return 0;
 
@@ -628,8 +616,7 @@ static int p11prov_object_close(void *ctx)
 
 static int p11prov_set_ctx_params(void *loaderctx, const OSSL_PARAM params[])
 {
-    fprintf(stderr, "set ctx params (%p, %p)\n", loaderctx, params);
-    fflush(stderr);
+    p11prov_debug("set ctx params (%p, %p)\n", loaderctx, params);
 
     return 1;
 }
@@ -688,8 +675,7 @@ static int p11prov_object_export(void *loaderctx, const void *reference,
 {
     P11PROV_OBJECT *obj = NULL;
 
-    fprintf(stderr, "object export %p, %ld\n", reference, reference_sz);
-    fflush(stderr);
+    p11prov_debug("object export %p, %ld\n", reference, reference_sz);
 
     if (!reference || reference_sz != sizeof(obj))
         return 0;

@@ -129,20 +129,20 @@ static int p11prov_module_init(PROVIDER_CTX *ctx)
 	return 0;
     }
 
-    fprintf(stderr, "PKCS#11: Initializing the module: %s\n", ctx->module);
+    p11prov_debug("PKCS#11: Initializing the module: %s\n", ctx->module);
 
     pkcs11_ctx = PKCS11_CTX_new();
     PKCS11_CTX_init_args(pkcs11_ctx, ctx->init_args);
     /* PKCS11_set_ui_method(pkcs11_ctx, ctx->ui_method, ctx->callback_data); */
     if (PKCS11_CTX_load(pkcs11_ctx, ctx->module) < 0) {
-	fprintf(stderr, "Unable to load module %s\n", ctx->module);
+	p11prov_debug("Unable to load module %s\n", ctx->module);
 	PKCS11_CTX_free(pkcs11_ctx);
 	return -1;
     }
 
     /* get slots */
     if (PKCS11_update_slots(pkcs11_ctx, &ctx->slot_list, &ctx->slot_count) < 0 || ctx->slot_count == 0) {
-	fprintf(stderr, "Failed to enumerate slots\n");
+	p11prov_debug("Failed to enumerate slots\n");
         PKCS11_CTX_unload(pkcs11_ctx);
         PKCS11_CTX_free(pkcs11_ctx);
 	return -1;
@@ -217,3 +217,23 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
     return 1;
 }
 
+void p11prov_debug(const char *fmt, ...)
+{
+    static int lazy_init = 0;
+    va_list args;
+
+    if (lazy_init == 0) {
+        char *env = getenv("PKCS11_PROVIDER_DEBUG");
+        if (env) {
+            lazy_init = 1;
+        } else {
+            lazy_init = -1;
+        }
+    }
+    if (lazy_init > 0) {
+        va_start(args, fmt);
+        vfprintf(stderr, fmt, args);
+        va_end(args);
+        fflush(stderr);
+    }
+}

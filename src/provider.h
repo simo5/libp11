@@ -46,6 +46,8 @@ struct st_provider_ctx {
 };
 typedef struct st_provider_ctx PROVIDER_CTX;
 
+void p11prov_debug(const char *fmt, ...);
+
 /* Key Management */
 extern const OSSL_DISPATCH p11prov_rsa_keymgmt_functions[];
 
