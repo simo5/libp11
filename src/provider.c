@@ -146,6 +146,12 @@ static const OSSL_ALGORITHM p11prov_object_stores[] = {
     { NULL, NULL, NULL, NULL }
 };
 
+static const OSSL_ALGORITHM p11prov_signatures[] = {
+    { P11PROV_NAMES_RSA, P11PROV_DEFAULT_PROPERTIES,
+      p11prov_rsa_signature_functions, P11PROV_DESCS_RSA, },
+    { NULL, NULL, NULL, NULL }
+};
+
 static const OSSL_ALGORITHM *p11prov_query_operation(void *provctx,
                                                      int operation_id,
                                                      int *no_cache)
@@ -156,6 +162,8 @@ static const OSSL_ALGORITHM *p11prov_query_operation(void *provctx,
         return p11prov_keymgmt;
     case OSSL_OP_STORE:
         return p11prov_object_stores;
+    case OSSL_OP_SIGNATURE:
+        return p11prov_signatures;
     }
     return NULL;
 }

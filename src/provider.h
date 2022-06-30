@@ -53,11 +53,20 @@ typedef struct p11prov_object P11PROV_OBJECT;
 typedef struct p11prov_key P11PROV_KEY;
 
 void p11prov_object_free(P11PROV_OBJECT *obj);
-P11PROV_KEY *p11prov_object_key(P11PROV_OBJECT *obj, bool need_private);
-int p11prov_object_export_public_rsa_key(P11PROV_KEY *key,
+bool p11prov_object_check_key(P11PROV_OBJECT *obj, bool need_private);
+int p11prov_object_export_public_rsa_key(P11PROV_OBJECT *obj,
                                          OSSL_CALLBACK *cb_fn, void *cb_arg);
+P11PROV_KEY *p11prov_object_get_key(P11PROV_OBJECT *obj);
+
+void p11prov_key_free(P11PROV_KEY *key);
+CK_ATTRIBUTE *p11prov_key_attr(P11PROV_KEY *key, CK_ATTRIBUTE_TYPE type);
+CK_SLOT_ID p11prov_key_slotid(P11PROV_KEY *key);
+CK_OBJECT_HANDLE p11prov_key_hanlde(P11PROV_KEY *key);
 
 extern const OSSL_DISPATCH p11prov_object_store_functions[];
+
+/* Signatures */
+extern const OSSL_DISPATCH p11prov_rsa_signature_functions[];
 
 #endif /* _PROVIDER_H */
 

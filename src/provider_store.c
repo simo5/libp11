@@ -17,6 +17,7 @@ struct p11prov_uri {
 
 struct p11prov_key {
     CK_SLOT_ID slotid;
+    CK_OBJECT_HANDLE handle;
     CK_KEY_TYPE type;
 
     bool private;
@@ -27,6 +28,8 @@ struct p11prov_key {
 
     CK_ATTRIBUTE *attrs;
     unsigned long numattrs;
+
+    int refcnt;
 };
 
 struct p11prov_object {
@@ -34,7 +37,8 @@ struct p11prov_object {
     struct p11prov_uri *parsed_uri;
     int loaded;
     struct p11prov_key *key;
-    int ref;
+
+    int refcnt;
 };
 
 static void p11prov_uri_free(struct p11prov_uri *parsed_uri)
@@ -53,11 +57,37 @@ static void p11prov_uri_free(struct p11prov_uri *parsed_uri)
     OPENSSL_clear_free(parsed_uri, sizeof(struct p11prov_uri));
 }
 
+static P11PROV_KEY *p11prov_key_new(void)
+{
+    P11PROV_KEY *key;
+
+    key = OPENSSL_zalloc(sizeof(P11PROV_KEY));
+    if (!key) return NULL;
+
+    key->refcnt = 1;
+
+    return key;
+}
+
+static P11PROV_KEY *p11prov_key_ref(P11PROV_KEY *key)
+{
+    if (key &&
+        __atomic_fetch_add(&key->refcnt, 1, __ATOMIC_ACQ_REL) > 0) {
+        return key;
+    }
+
+    return NULL;
+}
+
 void p11prov_key_free(P11PROV_KEY *key)
 {
     p11prov_debug("key free (%p)\n", key);
 
     if (key == NULL) return;
+    if (__atomic_sub_fetch(&key->refcnt, 1, __ATOMIC_ACQ_REL) != 0) {
+        p11prov_debug("key free: reference held\n");
+        return;
+    }
 
     OPENSSL_free(key->id);
     OPENSSL_free(key->label);
@@ -70,14 +100,23 @@ void p11prov_key_free(P11PROV_KEY *key)
     OPENSSL_clear_free(key, sizeof(P11PROV_KEY));
 }
 
+static P11PROV_OBJECT *p11prov_object_ref(P11PROV_OBJECT *obj)
+{
+    if (obj &&
+        __atomic_fetch_add(&obj->refcnt, 1, __ATOMIC_ACQ_REL) > 0) {
+        return obj;
+    }
+
+    return NULL;
+}
+
 void p11prov_object_free(P11PROV_OBJECT *obj)
 {
     p11prov_debug("object free (%p)\n", obj);
 
     if (obj == NULL) return;
-
-    if (obj->ref) {
-        obj->ref--;
+    if (__atomic_sub_fetch(&obj->refcnt, 1, __ATOMIC_ACQ_REL) != 0) {
+        p11prov_debug("object free: reference held\n");
         return;
     }
 
@@ -87,21 +126,75 @@ void p11prov_object_free(P11PROV_OBJECT *obj)
     OPENSSL_clear_free(obj, sizeof(P11PROV_OBJECT));
 }
 
-P11PROV_KEY *p11prov_object_key(P11PROV_OBJECT *obj, bool need_private)
+bool p11prov_object_check_key(P11PROV_OBJECT *obj, bool need_private)
 {
     if (need_private) {
-        if (obj->key && obj->key->private) return obj->key;
-        else return NULL;
+        return obj->key && obj->key->private;
     }
-    return obj->key;
+    return obj->key != NULL;
 }
 
-static OSSL_FUNC_store_open_fn p11prov_object_open;
-static OSSL_FUNC_store_attach_fn p11prov_object_attach;
-static OSSL_FUNC_store_load_fn p11prov_object_load;
-static OSSL_FUNC_store_eof_fn p11prov_object_eof;
-static OSSL_FUNC_store_close_fn p11prov_object_close;
-static OSSL_FUNC_store_export_object_fn p11prov_object_export;
+P11PROV_KEY *p11prov_object_get_key(P11PROV_OBJECT *obj)
+{
+    return p11prov_key_ref(obj->key);
+}
+
+CK_ATTRIBUTE *p11prov_key_attr(P11PROV_KEY *key, CK_ATTRIBUTE_TYPE type)
+{
+    if (!key) return NULL;
+
+    for (int i = 0; i < key->numattrs; i++) {
+        if (key->attrs[i].type == type) {
+            return &key->attrs[i];
+        }
+    }
+
+    return NULL;
+}
+
+CK_SLOT_ID p11prov_key_slotid(P11PROV_KEY *key)
+{
+    if (key) return key->slotid;
+    return CK_UNAVAILABLE_INFORMATION;
+}
+
+CK_OBJECT_HANDLE p11prov_key_hanlde(P11PROV_KEY *key)
+{
+    if (key) return key->handle;
+    return CK_UNAVAILABLE_INFORMATION;
+}
+
+int p11prov_object_export_public_rsa_key(P11PROV_OBJECT *obj,
+                                         OSSL_CALLBACK *cb_fn, void *cb_arg)
+{
+    OSSL_PARAM params[3] = { { 0 }, { 0 }, OSSL_PARAM_construct_end() };
+    int pidx = 0;
+    int ret = 0;
+
+    if (!obj->key || obj->key->type != CKK_RSA) return RET_OSSL_ERR;
+
+    for (int i = 0; i < obj->key->numattrs; i++) {
+        switch (obj->key->attrs[i].type) {
+        case CKA_MODULUS:
+            params[0] = OSSL_PARAM_construct_BN(
+                            OSSL_PKEY_PARAM_RSA_N,
+                            obj->key->attrs[i].pValue,
+                            obj->key->attrs[i].ulValueLen);
+            break;
+        case CKA_PUBLIC_EXPONENT:
+            params[1] = OSSL_PARAM_construct_BN(
+                            OSSL_PKEY_PARAM_RSA_E,
+                            obj->key->attrs[i].pValue,
+                            obj->key->attrs[i].ulValueLen);
+            break;
+        default:
+            continue;
+        }
+    }
+    if (!params[0].key || !params[1].key) return RET_OSSL_ERR;
+
+    return cb_fn(params, cb_arg);
+}
 
 static int hex_to_byte(const char *in, unsigned char *byte)
 {
@@ -320,43 +413,6 @@ done:
     return ret;
 }
 
-static void *p11prov_object_open(void *provctx, const char *uri)
-{
-    PROVIDER_CTX *ctx = (PROVIDER_CTX *)provctx;
-    P11PROV_OBJECT *obj;
-    int ret;
-
-    p11prov_debug("object open (%p, %s)\n", ctx, uri);
-
-    obj = OPENSSL_zalloc(sizeof(P11PROV_OBJECT));
-    if (obj == NULL) return NULL;
-
-    obj->parsed_uri = OPENSSL_zalloc(sizeof(struct p11prov_uri));
-    if (obj->parsed_uri == NULL) {
-        p11prov_object_free(obj);
-        return NULL;
-    }
-
-    ret = parse_uri(obj->parsed_uri, uri);
-    if (ret != 0) {
-        p11prov_object_free(obj);
-        return NULL;
-    }
-
-    obj->provctx = ctx;
-
-    return obj;
-}
-
-static void *p11prov_object_attach(void *provctx, OSSL_CORE_BIO *in)
-{
-    PROVIDER_CTX *ctx = (PROVIDER_CTX *)provctx;
-
-    p11prov_debug("object attach (%p, %p)\n", ctx, in);
-
-    return NULL;
-}
-
 struct fetch_attrs {
     CK_ATTRIBUTE_TYPE type;
     unsigned char **value;
@@ -463,7 +519,7 @@ static int object_fetch_attributes(CK_FUNCTION_LIST *f,
                 if (r[i].ulValueLen == CK_UNAVAILABLE_INFORMATION) {
                     FA_RETURN_LEN(attrs[i], 0);
                 }
-                return ret;
+                if (attrs[i].required) return ret;
             }
         }
         ret = CKR_OK;
@@ -534,7 +590,7 @@ static P11PROV_KEY *object_handle_to_key(CK_FUNCTION_LIST *f,
     unsigned long aa_len = 0;
     int ret;
 
-    key = OPENSSL_zalloc(sizeof(P11PROV_KEY));
+    key = p11prov_key_new();
     if (key == NULL) return NULL;
 
     FA_ASSIGN_ALL(attrs[0], CKA_KEY_TYPE,
@@ -549,6 +605,8 @@ static P11PROV_KEY *object_handle_to_key(CK_FUNCTION_LIST *f,
                       &key->always_auth, &aa_len, false, false);
         attrnums = 4;
     }
+    /* TODO: fetch also other attributes as specified in
+     * Spev v3 - 4.9 Private key objects  ?? */
 
     ret = object_fetch_attributes(f, session, object, attrs, attrnums);
     if (ret != CKR_OK) {
@@ -558,6 +616,7 @@ static P11PROV_KEY *object_handle_to_key(CK_FUNCTION_LIST *f,
     }
 
     key->slotid = slotid;
+    key->handle = object;
 
     if (class == CKO_PRIVATE_KEY) {
         key->private = true;
@@ -649,6 +708,51 @@ static P11PROV_KEY *find_key(CK_FUNCTION_LIST *f, CK_SLOT_ID slotid,
     return key;
 }
 
+static OSSL_FUNC_store_open_fn p11prov_object_open;
+static OSSL_FUNC_store_attach_fn p11prov_object_attach;
+static OSSL_FUNC_store_load_fn p11prov_object_load;
+static OSSL_FUNC_store_eof_fn p11prov_object_eof;
+static OSSL_FUNC_store_close_fn p11prov_object_close;
+static OSSL_FUNC_store_export_object_fn p11prov_object_export;
+
+static void *p11prov_object_open(void *provctx, const char *uri)
+{
+    PROVIDER_CTX *ctx = (PROVIDER_CTX *)provctx;
+    P11PROV_OBJECT *obj;
+    int ret;
+
+    p11prov_debug("object open (%p, %s)\n", ctx, uri);
+
+    obj = OPENSSL_zalloc(sizeof(P11PROV_OBJECT));
+    if (obj == NULL) return NULL;
+
+    obj->parsed_uri = OPENSSL_zalloc(sizeof(struct p11prov_uri));
+    if (obj->parsed_uri == NULL) {
+        p11prov_object_free(obj);
+        return NULL;
+    }
+
+    ret = parse_uri(obj->parsed_uri, uri);
+    if (ret != 0) {
+        p11prov_object_free(obj);
+        return NULL;
+    }
+
+    obj->provctx = ctx;
+    obj->refcnt = 1;
+
+    return obj;
+}
+
+static void *p11prov_object_attach(void *provctx, OSSL_CORE_BIO *in)
+{
+    PROVIDER_CTX *ctx = (PROVIDER_CTX *)provctx;
+
+    p11prov_debug("object attach (%p, %p)\n", ctx, in);
+
+    return NULL;
+}
+
 static int p11prov_object_load(void *ctx,
                                OSSL_CALLBACK *object_cb, void *object_cbarg,
                                OSSL_PASSPHRASE_CALLBACK *pw_cb, void *pw_cbarg)
@@ -733,9 +837,9 @@ static int p11prov_object_load(void *ctx,
                         OSSL_OBJECT_PARAM_DATA_TYPE, type, 0);
 
         /* giving away the object by reference */
-        obj->ref++;
         params[2] = OSSL_PARAM_construct_octet_string(
-                        OSSL_OBJECT_PARAM_REFERENCE, &obj, sizeof(obj));
+                        OSSL_OBJECT_PARAM_REFERENCE,
+                        p11prov_object_ref(obj), sizeof(obj));
         params[3] = OSSL_PARAM_construct_end();
 
         return object_cb(params, object_cbarg);
@@ -772,36 +876,6 @@ static int p11prov_set_ctx_params(void *loaderctx, const OSSL_PARAM params[])
     return 1;
 }
 
-int p11prov_object_export_public_rsa_key(P11PROV_KEY *key,
-                                         OSSL_CALLBACK *cb_fn, void *cb_arg)
-{
-    OSSL_PARAM params[3] = { { 0 }, { 0 }, OSSL_PARAM_construct_end() };
-    int pidx = 0;
-    int ret = 0;
-
-    if (!key || key->type != CKK_RSA) return RET_OSSL_ERR;
-
-    for (int i = 0; i < key->numattrs; i++) {
-        switch (key->attrs[i].type) {
-        case CKA_MODULUS:
-            params[0] = OSSL_PARAM_construct_BN(OSSL_PKEY_PARAM_RSA_N,
-                                                key->attrs[i].pValue,
-                                                key->attrs[i].ulValueLen);
-            break;
-        case CKA_PUBLIC_EXPONENT:
-            params[1] = OSSL_PARAM_construct_BN(OSSL_PKEY_PARAM_RSA_E,
-                                                key->attrs[i].pValue,
-                                                key->attrs[i].ulValueLen);
-            break;
-        default:
-            continue;
-        }
-    }
-    if (!params[0].key || !params[1].key) return RET_OSSL_ERR;
-
-    return cb_fn(params, cb_arg);
-}
-
 static int p11prov_object_export(void *loaderctx, const void *reference,
                                  size_t reference_sz, OSSL_CALLBACK *cb_fn,
                                  void *cb_arg)
@@ -814,13 +888,12 @@ static int p11prov_object_export(void *loaderctx, const void *reference,
         return 0;
 
     /* the contents of the reference is the address to our object */
-    obj = *(P11PROV_OBJECT **)reference;
-    /* we grabbed it, so we detach it */
-    *(P11PROV_OBJECT **)reference = NULL;
+    obj = (P11PROV_OBJECT *)reference;
 
     /* we can only export public bits, so that's all we do */
-    return p11prov_object_export_public_rsa_key(obj->key, cb_fn, cb_arg);
+    return p11prov_object_export_public_rsa_key(obj, cb_fn, cb_arg);
 }
+
 
 const OSSL_DISPATCH p11prov_object_store_functions[] = {
     { OSSL_FUNC_STORE_OPEN, (void(*)(void))p11prov_object_open },
