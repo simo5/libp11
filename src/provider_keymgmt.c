@@ -63,21 +63,20 @@ static void *p11prov_rsa_load(const void *reference, size_t reference_sz)
 static int p11prov_rsa_has(const void *keydata, int selection)
 {
     P11PROV_OBJECT *obj = (P11PROV_OBJECT *)keydata;
-    PKCS11_KEY *key = NULL;
-    int ok = 1;
 
     p11prov_debug("has %p %d\n", obj, selection);
 
     if (obj == NULL) return 0;
-    key = p11prov_object_key(obj);
 
-    if (selection & OSSL_KEYMGMT_SELECT_PRIVATE_KEY)
-        ok = (ok && key && key->isPrivate)?1:0;
+    if (selection & OSSL_KEYMGMT_SELECT_PRIVATE_KEY) {
+        if (p11prov_object_key(obj, true) == NULL) return 0;
+    }
 
-    if (selection & OSSL_KEYMGMT_SELECT_PUBLIC_KEY)
-        ok = (ok && key)?1:0;
+    if (selection & OSSL_KEYMGMT_SELECT_PUBLIC_KEY) {
+        if (p11prov_object_key(obj, false) == NULL) return 0;
+    }
 
-    return ok;
+    return 1;
 }
 
 static int p11prov_rsa_import(void *keydata, int selection,
@@ -97,7 +96,8 @@ static int p11prov_rsa_export(void *keydata, int selection,
     if (obj == NULL) return 0;
 
     if (selection & OSSL_KEYMGMT_SELECT_PUBLIC_KEY) {
-        return p11prov_object_export_public(obj, param_callback, cbarg);
+        return p11prov_object_export_public_rsa_key(
+                    p11prov_object_key(obj, false), param_callback, cbarg);
     }
 
     return 0;

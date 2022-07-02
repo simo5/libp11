@@ -7,7 +7,9 @@
 #include "config.h"
 #endif
 
-#include "libp11.h"
+#include <stdbool.h>
+
+#include "pkcs11.h"
 #include <openssl/core_dispatch.h>
 #include <openssl/core_object.h>
 #include <openssl/types.h>
@@ -18,6 +20,9 @@
 #include <openssl/core_names.h>
 
 #define UNUSED  __attribute__((unused))
+#define RET_OSSL_OK 1
+#define RET_OSSL_ERR 0
+#define RET_OSSL_BAD -1
 
 #define P11PROV_PKCS11_MODULE_PATH "pkcs11-module-path"
 #define P11PROV_PKCS11_MODULE_INIT_ARGS "pkcs11-module-init-args"
@@ -27,25 +32,17 @@
 #define P11PROV_DESCS_RSA "PKCS11 RSA Implementation"
 #define P11PROV_DESCS_URI "PKCS11 URI Store"
 
-struct st_provider_ctx {
-    pthread_mutex_t lock;
-
-    /* Provider handles */
-    const OSSL_CORE_HANDLE *handle;
-    OSSL_LIB_CTX *libctx;
-
-    /* Configuration */
-    BUF_MEM pin;
-    const char *module;
-    const char *init_args;
-
-    /* Current operations */
-    PKCS11_CTX *pkcs11_ctx;
-    PKCS11_SLOT *slot_list;
-    unsigned int slot_count;
-};
 typedef struct st_provider_ctx PROVIDER_CTX;
 
+struct p11prov_slot {
+    CK_SLOT_ID id;
+    CK_SLOT_INFO slot;
+    CK_TOKEN_INFO token;
+};
+
+CK_FUNCTION_LIST *provider_ctx_fns(PROVIDER_CTX *ctx);
+int provider_ctx_lock_slots(PROVIDER_CTX *ctx, struct p11prov_slot **slots);
+void provider_ctx_unlock_slots(PROVIDER_CTX *ctx, struct p11prov_slot **slots);
 void p11prov_debug(const char *fmt, ...);
 
 /* Key Management */
@@ -53,11 +50,12 @@ extern const OSSL_DISPATCH p11prov_rsa_keymgmt_functions[];
 
 /* Object Stores */
 typedef struct p11prov_object P11PROV_OBJECT;
+typedef struct p11prov_key P11PROV_KEY;
 
 void p11prov_object_free(P11PROV_OBJECT *obj);
-PKCS11_KEY *p11prov_object_key(P11PROV_OBJECT *obj);
-int p11prov_object_export_public(P11PROV_OBJECT *obj,
-                                 OSSL_CALLBACK *cb_fn, void *cb_arg);
+P11PROV_KEY *p11prov_object_key(P11PROV_OBJECT *obj, bool need_private);
+int p11prov_object_export_public_rsa_key(P11PROV_KEY *key,
+                                         OSSL_CALLBACK *cb_fn, void *cb_arg);
 
 extern const OSSL_DISPATCH p11prov_object_store_functions[];
 
